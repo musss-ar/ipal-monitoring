@@ -1,0 +1,434 @@
+{% extends "base.html" %}
+
+{% block title %}Laporan{% endblock %}
+
+{% block extra_css %}
+<style>
+@media print {
+    .navbar, .btn-group, .footer, #filterSection {
+        display: none;
+    }
+    body {
+        background: white;
+    }
+    .container {
+        box-shadow: none;
+    }
+}
+
+.report-header {
+    text-align: center;
+    margin-bottom: 2rem;
+}
+
+.report-header h2 {
+    margin-bottom: 0.5rem;
+}
+
+.report-header h3 {
+    color: #0e7658;
+    margin-bottom: 1rem;
+}
+
+.report-footer {
+    border-top: 2px solid #e5e7eb;
+    padding-top: 2rem;
+    margin-top: 3rem;
+    display: flex;
+    justify-content: space-between;
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>Laporan Monitoring IPAL</h1>
+    <p>Generate laporan dan analisis kepatuhan baku mutu</p>
+</div>
+
+<!-- Filter Section -->
+<div class="container" id="filterSection">
+    <h2 class="container-title">Generate Laporan</h2>
+    
+    <div class="form-grid">
+        <div class="form-group">
+            <label>Periode Laporan</label>
+            <select id="reportPeriod">
+                <option value="today">Hari Ini</option>
+                <option value="yesterday">Kemarin</option>
+                <option value="week">7 Hari Terakhir</option>
+                <option value="month" selected>30 Hari Terakhir</option>
+                <option value="custom">Custom</option>
+            </select>
+        </div>
+
+        <div class="form-group" id="customDateGroup" style="display: none;">
+            <label>Tanggal Mulai</label>
+            <input type="date" id="customStartDate">
+        </div>
+
+        <div class="form-group" id="customDateEndGroup" style="display: none;">
+            <label>Tanggal Akhir</label>
+            <input type="date" id="customEndDate">
+        </div>
+
+        <div class="form-group">
+            <label>Jenis Laporan</label>
+            <select id="reportType">
+                <option value="summary">Summary</option>
+                <option value="detailed">Detail Lengkap</option>
+                <option value="compliance">Kepatuhan Baku Mutu</option>
+            </select>
+        </div>
+    </div>
+
+    <div class="btn-group">
+        <button class="btn btn-primary" onclick="generateReport()">
+            Generate Laporan
+        </button>
+        <button class="btn btn-secondary" onclick="downloadPDF()">
+            Download PDF
+        </button>
+        <button class="btn btn-secondary" onclick="window.print()">
+            Print
+        </button>
+    </div>
+</div>
+
+<!-- Report Preview -->
+<div class="container" id="reportPreview" style="display: none;">
+    <div class="report-header">
+        <h2>RS KHUSUS MATA PURWOKERTO</h2>
+        <h3>LAPORAN MONITORING KUALITAS AIR IPAL</h3>
+        <p id="reportPeriodText"></p>
+    </div>
+
+    <!-- Statistics Summary -->
+    <div class="stats-grid" id="reportStats"></div>
+
+    <!-- Compliance Table -->
+    <div class="table-container">
+        <h3 style="margin-bottom: 1rem;">Tabel Kepatuhan Baku Mutu</h3>
+        <table>
+            <thead>
+                <tr>
+                    <th>Parameter</th>
+                    <th>Satuan</th>
+                    <th>Baku Mutu</th>
+                    <th>Rata-rata</th>
+                    <th>Min</th>
+                    <th>Max</th>
+                    <th>Status</th>
+                </tr>
+            </thead>
+            <tbody id="complianceTableBody"></tbody>
+        </table>
+    </div>
+
+    <!-- Chart -->
+    <div class="chart-container">
+        <h3 style="margin-bottom: 1rem;">Grafik Tren Parameter</h3>
+        <canvas id="reportChart"></canvas>
+    </div>
+
+    <!-- Detailed Data -->
+    <div class="table-container" id="detailedDataSection" style="display: none;">
+        <h3 style="margin-bottom: 1rem;">Data Detail</h3>
+        <table>
+            <thead>
+                <tr>
+                    <th>Tanggal & Waktu</th>
+                    <th>pH</th>
+                    <th>Suhu (°C)</th>
+                    <th>TDS (ppm)</th>
+                    <th>Status</th>
+                </tr>
+            </thead>
+            <tbody id="detailedDataBody"></tbody>
+        </table>
+    </div>
+
+    <!-- Footer -->
+    <div class="report-footer">
+        <div>
+            <p>Dicetak tanggal: <span id="printDate"></span></p>
+            <p>Dicetak oleh: {{ session.username or 'Admin' }}</p>
+        </div>
+        <div style="text-align: right;">
+            <p>Mengetahui,</p>
+            <br><br>
+            <p style="border-top: 1px solid #333; display: inline-block; padding-top: 0.5rem;">
+                (................................)
+            </p>
+            <p>Kepala Unit IPAL</p>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    let reportChart = null;
+
+    document.getElementById('reportPeriod').addEventListener('change', function() {
+        const customGroups = document.querySelectorAll('#customDateGroup, #customDateEndGroup');
+        if (this.value === 'custom') {
+            customGroups.forEach(g => g.style.display = 'block');
+        } else {
+            customGroups.forEach(g => g.style.display = 'none');
+        }
+    });
+
+    async function generateReport() {
+        const period = document.getElementById('reportPeriod').value;
+        const reportType = document.getElementById('reportType').value;
+
+        let startDate, endDate;
+        const now = new Date();
+        
+        switch(period) {
+            case 'today':
+                startDate = new Date(now.setHours(0, 0, 0, 0));
+                endDate = new Date();
+                break;
+            case 'yesterday':
+                startDate = new Date(now.setDate(now.getDate() - 1));
+                startDate.setHours(0, 0, 0, 0);
+                endDate = new Date(startDate);
+                endDate.setHours(23, 59, 59, 999);
+                break;
+            case 'week':
+                startDate = new Date(now.setDate(now.getDate() - 7));
+                endDate = new Date();
+                break;
+            case 'month':
+                startDate = new Date(now.setDate(now.getDate() - 30));
+                endDate = new Date();
+                break;
+            case 'custom':
+                startDate = new Date(document.getElementById('customStartDate').value);
+                endDate = new Date(document.getElementById('customEndDate').value);
+                break;
+        }
+
+        try {
+            const response = await fetch(`/api/sensor/history?start_date=${startDate.toISOString()}&end_date=${endDate.toISOString()}&limit=1000`);
+            const sensorData = await response.json();
+
+            if (sensorData.length === 0) {
+                alert('Tidak ada data untuk periode yang dipilih');
+                return;
+            }
+
+            document.getElementById('reportPreview').style.display = 'block';
+            document.getElementById('reportPeriodText').textContent = 
+                `Periode: ${startDate.toLocaleDateString('id-ID')} - ${endDate.toLocaleDateString('id-ID')}`;
+            document.getElementById('printDate').textContent = new Date().toLocaleDateString('id-ID');
+
+            generateStatistics(sensorData);
+            generateComplianceTable(sensorData);
+            generateReportChart(sensorData);
+
+            if (reportType === 'detailed') {
+                document.getElementById('detailedDataSection').style.display = 'block';
+                generateDetailedData(sensorData);
+            } else {
+                document.getElementById('detailedDataSection').style.display = 'none';
+            }
+
+            document.getElementById('reportPreview').scrollIntoView({ behavior: 'smooth' });
+
+        } catch (error) {
+            console.error('Error generating report:', error);
+            alert('Gagal membuat laporan');
+        }
+    }
+
+    function generateStatistics(data) {
+        const phValues = data.map(d => d.ph);
+        const tempValues = data.map(d => d.temperature);
+        const tdsValues = data.map(d => d.tds);
+
+        const stats = [
+            {
+                label: 'Total Data Point',
+                value: data.length,
+                subvalue: 'Pengukuran'
+            },
+            {
+                label: 'pH Rata-rata',
+                value: avg(phValues).toFixed(2),
+                subvalue: `Range: ${Math.min(...phValues).toFixed(2)} - ${Math.max(...phValues).toFixed(2)}`
+            },
+            {
+                label: 'Suhu Rata-rata',
+                value: avg(tempValues).toFixed(1) + '°C',
+                subvalue: `Range: ${Math.min(...tempValues).toFixed(1)} - ${Math.max(...tempValues).toFixed(1)}°C`
+            },
+            {
+                label: 'TDS Rata-rata',
+                value: avg(tdsValues).toFixed(0) + ' ppm',
+                subvalue: `Range: ${Math.min(...tdsValues).toFixed(0)} - ${Math.max(...tdsValues).toFixed(0)} ppm`
+            }
+        ];
+
+        const container = document.getElementById('reportStats');
+        container.innerHTML = '';
+
+        stats.forEach(stat => {
+            const card = document.createElement('div');
+            card.className = 'stat-card';
+            card.innerHTML = `
+                <div class="stat-label">${stat.label}</div>
+                <div class="stat-value">${stat.value}</div>
+                <div class="stat-subvalue">${stat.subvalue}</div>
+            `;
+            container.appendChild(card);
+        });
+    }
+
+    function generateComplianceTable(data) {
+        const phValues = data.map(d => d.ph);
+        const tempValues = data.map(d => d.temperature);
+        const tdsValues = data.map(d => d.tds);
+
+        const compliance = [
+            {
+                parameter: 'pH',
+                unit: '-',
+                standard: '6.0 - 9.0',
+                avg: avg(phValues).toFixed(2),
+                min: Math.min(...phValues).toFixed(2),
+                max: Math.max(...phValues).toFixed(2),
+                status: checkCompliance(avg(phValues), 6.0, 9.0)
+            },
+            {
+                parameter: 'Suhu',
+                unit: '°C',
+                standard: '≤ 30',
+                avg: avg(tempValues).toFixed(1),
+                min: Math.min(...tempValues).toFixed(1),
+                max: Math.max(...tempValues).toFixed(1),
+                status: checkCompliance(Math.max(...tempValues), 0, 30)
+            },
+            {
+                parameter: 'TDS',
+                unit: 'ppm',
+                standard: '≤ 2000',
+                avg: avg(tdsValues).toFixed(0),
+                min: Math.min(...tdsValues).toFixed(0),
+                max: Math.max(...tdsValues).toFixed(0),
+                status: checkCompliance(Math.max(...tdsValues), 0, 2000)
+            }
+        ];
+
+        const tbody = document.getElementById('complianceTableBody');
+        tbody.innerHTML = '';
+
+        compliance.forEach(item => {
+            const tr = document.createElement('tr');
+            tr.innerHTML = `
+                <td>${item.parameter}</td>
+                <td>${item.unit}</td>
+                <td>${item.standard}</td>
+                <td>${item.avg}</td>
+                <td>${item.min}</td>
+                <td>${item.max}</td>
+                <td><span class="status-badge badge-${item.status}">${item.status === 'normal' ? '✓ Memenuhi' : '✗ Tidak Memenuhi'}</span></td>
+            `;
+            tbody.appendChild(tr);
+        });
+    }
+
+    function generateReportChart(data) {
+        const ctx = document.getElementById('reportChart');
+        const maxPoints = 50;
+        const step = Math.ceil(data.length / maxPoints);
+        const sampledData = data.filter((_, index) => index % step === 0);
+
+        const labels = sampledData.map(d => new Date(d.timestamp).toLocaleDateString('id-ID', {
+            month: 'short',
+            day: 'numeric'
+        }));
+
+        if (reportChart) {
+            reportChart.destroy();
+        }
+
+        reportChart = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: labels,
+                datasets: [
+                    {
+                        label: 'pH',
+                        data: sampledData.map(d => d.ph),
+                        borderColor: '#3b82f6',
+                        backgroundColor: 'rgba(59, 130, 246, 0.1)',
+                        tension: 0.4
+                    },
+                    {
+                        label: 'Suhu (°C)',
+                        data: sampledData.map(d => d.temperature),
+                        borderColor: '#f59e0b',
+                        backgroundColor: 'rgba(245, 158, 11, 0.1)',
+                        tension: 0.4
+                    },
+                    {
+                        label: 'TDS (ppm/10)',
+                        data: sampledData.map(d => d.tds / 10),
+                        borderColor: '#8b5cf6',
+                        backgroundColor: 'rgba(139, 92, 246, 0.1)',
+                        tension: 0.4
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                plugins: {
+                    legend: { display: true }
+                }
+            }
+        });
+    }
+
+    function generateDetailedData(data) {
+        const tbody = document.getElementById('detailedDataBody');
+        tbody.innerHTML = '';
+        const displayData = data.slice(0, 100);
+
+        displayData.forEach(row => {
+            const tr = document.createElement('tr');
+            tr.innerHTML = `
+                <td>${new Date(row.timestamp).toLocaleString('id-ID')}</td>
+                <td>${row.ph.toFixed(2)}</td>
+                <td>${row.temperature.toFixed(1)}</td>
+                <td>${row.tds.toFixed(0)}</td>
+                <td><span class="status-badge badge-${row.status}">${getStatusText(row.status)}</span></td>
+            `;
+            tbody.appendChild(tr);
+        });
+    }
+
+    function avg(arr) {
+        return arr.reduce((a, b) => a + b, 0) / arr.length;
+    }
+
+    function checkCompliance(value, min, max) {
+        return value >= min && value <= max ? 'normal' : 'danger';
+    }
+
+    function getStatusText(status) {
+        const map = {
+            'normal': 'Normal',
+            'warning': 'Peringatan',
+            'danger': 'Bahaya'
+        };
+        return map[status] || status;
+    }
+
+    function downloadPDF() {
+        alert('Fitur download PDF akan segera tersedia!\n\nSementara ini, Anda bisa gunakan Print to PDF dari browser.');
+    }
+</script>
+{% endblock %}

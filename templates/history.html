@@ -1,0 +1,303 @@
+{% extends "base.html" %}
+
+{% block title %}Riwayat Data{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>Riwayat Data Monitoring</h1>
+    <p>Data historis dan analisis tren parameter air</p>
+</div>
+
+<!-- Filter Section -->
+<div class="container">
+    <h2 class="container-title">Filter Data Historis</h2>
+    <div class="form-grid">
+        <div class="form-group">
+            <label>Tanggal Mulai</label>
+            <input type="datetime-local" id="startDate">
+        </div>
+        <div class="form-group">
+            <label>Tanggal Akhir</label>
+            <input type="datetime-local" id="endDate">
+        </div>
+        <div class="form-group">
+            <label>Periode Cepat</label>
+            <select id="quickPeriod">
+                <option value="">Pilih Periode</option>
+                <option value="today">Hari Ini</option>
+                <option value="yesterday">Kemarin</option>
+                <option value="week">7 Hari Terakhir</option>
+                <option value="month">30 Hari Terakhir</option>
+            </select>
+        </div>
+        <div class="form-group">
+            <label>Jumlah Data</label>
+            <select id="dataLimit">
+                <option value="50">50 Data</option>
+                <option value="100" selected>100 Data</option>
+                <option value="500">500 Data</option>
+                <option value="1000">1000 Data</option>
+            </select>
+        </div>
+    </div>
+    <div class="btn-group">
+        <button class="btn btn-primary" onclick="loadData()">
+            Tampilkan Data
+        </button>
+        <button class="btn btn-secondary" onclick="exportData()">
+            Export CSV
+        </button>
+    </div>
+</div>
+
+<!-- Statistics -->
+<div class="stats-grid" id="statsContainer" style="display: none;">
+    <div class="stat-card">
+        <div class="stat-label">pH - Rata-rata</div>
+        <div class="stat-value" id="phAvg">-</div>
+        <div class="stat-subvalue">Min: <span id="phMin">-</span> | Max: <span id="phMax">-</span></div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-label">Suhu - Rata-rata</div>
+        <div class="stat-value" id="tempAvg">-</div>
+        <div class="stat-subvalue">Min: <span id="tempMin">-</span> | Max: <span id="tempMax">-</span></div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-label">TDS - Rata-rata</div>
+        <div class="stat-value" id="tdsAvg">-</div>
+        <div class="stat-subvalue">Min: <span id="tdsMin">-</span> | Max: <span id="tdsMax">-</span></div>
+    </div>
+</div>
+
+<!-- Chart -->
+<div class="chart-container">
+    <h2 class="chart-title">Grafik Tren Parameter</h2>
+    <canvas id="historyChart"></canvas>
+</div>
+
+<!-- Table -->
+<div class="container">
+    <h2 class="container-title">Tabel Data Detail</h2>
+    <div class="table-container">
+        <table>
+            <thead>
+                <tr>
+                    <th>Waktu</th>
+                    <th>pH</th>
+                    <th>Suhu (°C)</th>
+                    <th>TDS (ppm)</th>
+                    <th>Status</th>
+                </tr>
+            </thead>
+            <tbody id="tableBody">
+                <tr>
+                    <td colspan="5" class="loading">Memuat data</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    let chartInstance = null;
+
+    const now = new Date();
+    const yesterday = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+    document.getElementById('startDate').value = formatDateTimeLocal(yesterday);
+    document.getElementById('endDate').value = formatDateTimeLocal(now);
+
+    document.getElementById('quickPeriod').addEventListener('change', function() {
+        const period = this.value;
+        const end = new Date();
+        let start = new Date();
+
+        switch(period) {
+            case 'today':
+                start.setHours(0, 0, 0, 0);
+                break;
+            case 'yesterday':
+                start.setDate(start.getDate() - 1);
+                start.setHours(0, 0, 0, 0);
+                end.setHours(0, 0, 0, 0);
+                break;
+            case 'week':
+                start.setDate(start.getDate() - 7);
+                break;
+            case 'month':
+                start.setDate(start.getDate() - 30);
+                break;
+        }
+
+        document.getElementById('startDate').value = formatDateTimeLocal(start);
+        document.getElementById('endDate').value = formatDateTimeLocal(end);
+    });
+
+    async function loadData() {
+        const startDate = document.getElementById('startDate').value;
+        const endDate = document.getElementById('endDate').value;
+        const limit = document.getElementById('dataLimit').value;
+
+        try {
+            let url = `/api/sensor/history?limit=${limit}`;
+            if (startDate) url += `&start_date=${startDate}`;
+            if (endDate) url += `&end_date=${endDate}`;
+
+            const response = await fetch(url);
+            const data = await response.json();
+
+            if (data.length === 0) {
+                alert('Tidak ada data pada periode yang dipilih');
+                return;
+            }
+
+            displayChart(data);
+            displayTable(data);
+            calculateStats(data);
+            document.getElementById('statsContainer').style.display = 'grid';
+        } catch (error) {
+            console.error('Error loading data:', error);
+            alert('Gagal memuat data');
+        }
+    }
+
+    function displayChart(data) {
+        const ctx = document.getElementById('historyChart').getContext('2d');
+        data = data.reverse();
+
+        const labels = data.map(d => new Date(d.timestamp).toLocaleString('id-ID', {
+            month: 'short',
+            day: 'numeric',
+            hour: '2-digit',
+            minute: '2-digit'
+        }));
+
+        if (chartInstance) {
+            chartInstance.destroy();
+        }
+
+        chartInstance = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: labels,
+                datasets: [
+                    {
+                        label: 'pH',
+                        data: data.map(d => d.ph),
+                        borderColor: '#3b82f6',
+                        backgroundColor: 'rgba(59, 130, 246, 0.1)',
+                        tension: 0.4,
+                        yAxisID: 'y'
+                    },
+                    {
+                        label: 'Suhu (°C)',
+                        data: data.map(d => d.temperature),
+                        borderColor: '#f59e0b',
+                        backgroundColor: 'rgba(245, 158, 11, 0.1)',
+                        tension: 0.4,
+                        yAxisID: 'y1'
+                    },
+                    {
+                        label: 'TDS (ppm)',
+                        data: data.map(d => d.tds),
+                        borderColor: '#8b5cf6',
+                        backgroundColor: 'rgba(139, 92, 246, 0.1)',
+                        tension: 0.4,
+                        yAxisID: 'y2'
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                interaction: {
+                    mode: 'index',
+                    intersect: false
+                },
+                scales: {
+                    y: {
+                        type: 'linear',
+                        display: true,
+                        position: 'left',
+                        title: { display: true, text: 'pH' }
+                    },
+                    y1: {
+                        type: 'linear',
+                        display: true,
+                        position: 'right',
+                        title: { display: true, text: 'Suhu (°C)' },
+                        grid: { drawOnChartArea: false }
+                    },
+                    y2: {
+                        type: 'linear',
+                        display: false
+                    }
+                }
+            }
+        });
+    }
+
+    function displayTable(data) {
+        const tbody = document.getElementById('tableBody');
+        tbody.innerHTML = '';
+
+        data.forEach(row => {
+            const tr = document.createElement('tr');
+            tr.innerHTML = `
+                <td>${new Date(row.timestamp).toLocaleString('id-ID')}</td>
+                <td>${row.ph.toFixed(2)}</td>
+                <td>${row.temperature.toFixed(1)}</td>
+                <td>${row.tds.toFixed(0)}</td>
+                <td><span class="status-badge badge-${row.status}">${getStatusText(row.status)}</span></td>
+            `;
+            tbody.appendChild(tr);
+        });
+    }
+
+    function calculateStats(data) {
+        const phValues = data.map(d => d.ph);
+        const tempValues = data.map(d => d.temperature);
+        const tdsValues = data.map(d => d.tds);
+
+        document.getElementById('phAvg').textContent = avg(phValues).toFixed(2);
+        document.getElementById('phMin').textContent = Math.min(...phValues).toFixed(2);
+        document.getElementById('phMax').textContent = Math.max(...phValues).toFixed(2);
+
+        document.getElementById('tempAvg').textContent = avg(tempValues).toFixed(1) + ' °C';
+        document.getElementById('tempMin').textContent = Math.min(...tempValues).toFixed(1);
+        document.getElementById('tempMax').textContent = Math.max(...tempValues).toFixed(1);
+
+        document.getElementById('tdsAvg').textContent = avg(tdsValues).toFixed(0) + ' ppm';
+        document.getElementById('tdsMin').textContent = Math.min(...tdsValues).toFixed(0);
+        document.getElementById('tdsMax').textContent = Math.max(...tdsValues).toFixed(0);
+    }
+
+    function avg(arr) {
+        return arr.reduce((a, b) => a + b, 0) / arr.length;
+    }
+
+    function getStatusText(status) {
+        const statusMap = {
+            'normal': 'Normal',
+            'warning': 'Peringatan',
+            'danger': 'Bahaya'
+        };
+        return statusMap[status] || status;
+    }
+
+    function formatDateTimeLocal(date) {
+        const year = date.getFullYear();
+        const month = String(date.getMonth() + 1).padStart(2, '0');
+        const day = String(date.getDate()).padStart(2, '0');
+        const hours = String(date.getHours()).padStart(2, '0');
+        const minutes = String(date.getMinutes()).padStart(2, '0');
+        return `${year}-${month}-${day}T${hours}:${minutes}`;
+    }
+
+    function exportData() {
+        alert('Fitur export CSV akan segera tersedia!');
+    }
+
+    loadData();
+</script>
+{% endblock %}

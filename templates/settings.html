@@ -1,0 +1,204 @@
+{% extends "base.html" %}
+
+{% block title %}Pengaturan{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>Pengaturan Sistem</h1>
+    <p>Konfigurasi threshold, notifikasi, dan pengaturan lainnya</p>
+</div>
+
+<!-- Threshold Settings -->
+<div class="container">
+    <h2 class="container-title">Pengaturan Threshold Parameter</h2>
+    
+    <div class="alert">
+        <div>
+            <strong>Perhatian:</strong> Perubahan threshold akan mempengaruhi sistem alert. Pastikan nilai sesuai dengan standar baku mutu yang berlaku (Permenkes RI).
+        </div>
+    </div>
+
+    <div class="form-grid">
+        <div class="card">
+            <h3>💧 pH Air</h3>
+            <div class="form-group">
+                <label>Batas Minimum</label>
+                <input type="number" id="phMin" step="0.1" value="6.0">
+            </div>
+            <div class="form-group">
+                <label>Batas Maksimum</label>
+                <input type="number" id="phMax" step="0.1" value="9.0">
+            </div>
+            <small>Standar Permenkes: pH 6.0 - 9.0</small>
+        </div>
+
+        <div class="card">
+            <h3>🌡️ Suhu Air</h3>
+            <div class="form-group">
+                <label>Batas Minimum (°C)</label>
+                <input type="number" id="tempMin" step="0.1" value="0">
+            </div>
+            <div class="form-group">
+                <label>Batas Maksimum (°C)</label>
+                <input type="number" id="tempMax" step="0.1" value="30">
+            </div>
+            <small>Standar Permenkes: Maksimal 30°C</small>
+        </div>
+
+        <div class="card">
+            <h3>⚗️ TDS (Kekeruhan)</h3>
+            <div class="form-group">
+                <label>Batas Minimum (ppm)</label>
+                <input type="number" id="tdsMin" step="1" value="0">
+            </div>
+            <div class="form-group">
+                <label>Batas Maksimum (ppm)</label>
+                <input type="number" id="tdsMax" step="1" value="2000">
+            </div>
+            <small>Standar: Maksimal 2000 ppm</small>
+        </div>
+    </div>
+
+    <div class="btn-group">
+        <button class="btn btn-primary" onclick="saveThresholds()">
+            Simpan Pengaturan
+        </button>
+        <button class="btn btn-secondary" onclick="resetThresholds()">
+            Reset ke Default
+        </button>
+    </div>
+</div>
+
+<!-- Notification Settings -->
+<div class="container">
+    <h2 class="container-title">Pengaturan Notifikasi</h2>
+    
+    <div class="form-group">
+        <label class="checkbox-label">
+            <input type="checkbox" id="emailNotif" checked>
+            <span>Aktifkan notifikasi email</span>
+        </label>
+    </div>
+
+    <div class="form-group">
+        <label>Email Penerima Notifikasi</label>
+        <input type="email" id="notifEmail" placeholder="admin@rsmatapwt.com">
+        <small>Pisahkan dengan koma untuk multiple email</small>
+    </div>
+
+    <div class="form-group">
+        <label class="checkbox-label">
+            <input type="checkbox" id="whatsappNotif">
+            <span>Aktifkan notifikasi WhatsApp (Coming Soon)</span>
+        </label>
+    </div>
+
+    <div class="form-group">
+        <label>Nomor WhatsApp</label>
+        <input type="tel" id="whatsappNumber" placeholder="08123456789" disabled>
+    </div>
+
+    <button class="btn btn-primary" onclick="saveNotificationSettings()">
+        Simpan Pengaturan Notifikasi
+    </button>
+</div>
+
+<!-- Device Status -->
+<div class="container">
+    <h2 class="container-title">Informasi Perangkat IoT</h2>
+    
+    <div class="stats-grid">
+        <div class="stat-card">
+            <div class="stat-label">Device ID</div>
+            <div class="stat-value" id="deviceId">ESP32-01</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-label">Status Koneksi</div>
+            <div class="stat-value" id="deviceStatus">🟢 Online</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-label">Signal Strength</div>
+            <div class="stat-value" id="signalStrength">75%</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-label">Last Seen</div>
+            <div class="stat-value" style="font-size: 1.5rem;" id="lastSeen">Just now</div>
+        </div>
+    </div>
+</div>
+
+<!-- User Management (akan muncul jika admin) -->
+<div class="container" id="userManagementSection" style="display: none;">
+    <h2 class="container-title">Manajemen Pengguna</h2>
+    
+    <button class="btn btn-primary" style="margin-bottom: 1.5rem;" onclick="showAddUserModal()">
+        Tambah Pengguna Baru
+    </button>
+
+    <div class="table-container">
+        <table>
+            <thead>
+                <tr>
+                    <th>Username</th>
+                    <th>Email</th>
+                    <th>Role</th>
+                    <th>Aksi</th>
+                </tr>
+            </thead>
+            <tbody id="userTableBody">
+                <tr>
+                    <td>admin</td>
+                    <td>admin@rsmatapwt.com</td>
+                    <td><span class="status-badge badge-normal">Admin</span></td>
+                    <td>
+                        <button class="btn btn-secondary" style="padding: 0.5rem 1rem;">✏️ Edit</button>
+                    </td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<!-- System Info -->
+<div class="container">
+    <h2 class="container-title">Informasi Sistem</h2>
+    
+    <div class="form-grid">
+        <div class="card">
+            <h3>Versi Sistem</h3>
+            <p style="font-size: 1.5rem; font-weight: bold; color: #0e7658;">v1.0.0</p>
+        </div>
+        <div class="card">
+            <h3>Database</h3>
+            <p style="font-size: 1.5rem; font-weight: bold; color: #0e7658;">SQLite</p>
+        </div>
+        <div class="card">
+            <h3>Total Data</h3>
+            <p style="font-size: 1.5rem; font-weight: bold; color: #0e7658;" id="totalDataPoints">1,234</p>
+        </div>
+        <div class="card">
+            <h3>Uptime</h3>
+            <p style="font-size: 1.5rem; font-weight: bold; color: #0e7658;" id="systemUptime">2d 5h 30m</p>
+        </div>
+    </div>
+
+    <div class="btn-group">
+        <button class="btn btn-secondary" onclick="exportDatabase()">
+            Export Database
+        </button>
+        <button class="btn btn-danger" onclick="clearOldData()">
+            Hapus Data Lama (>90 hari)
+        </button>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="{{ url_for('static', filename='settings.js') }}"></script>
+<script>
+    const userRole = '{{ user_role }}';
+    if (typeof settingsApp !== 'undefined') {
+        settingsApp.setUserRole(userRole);
+    }
+</script>
+{% endblock %}

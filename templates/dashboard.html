@@ -1,0 +1,274 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>Dashboard Monitoring Real-time</h1>
+    <p>Pemantauan kualitas air IPAL secara langsung</p>
+</div>
+
+<!-- Status Bar -->
+<div class="status-bar">
+    <div class="status-item">
+        <div class="status-dot status-online" id="connectionStatus"></div>
+        <span id="connectionText">ESP32 Online</span>
+    </div>
+    <div class="status-item">
+        <span>Terakhir update: <strong id="lastUpdate">-</strong></span>
+    </div>
+    <div class="status-item">
+        <span>Status Sistem: <strong id="systemStatus">Normal</strong></span>
+    </div>
+</div>
+
+<!-- Parameter Cards -->
+<div class="cards-grid">
+    <div class="card">
+        <div class="card-header">
+            <span class="card-title">pH Air</span>
+            <div class="card-icon icon-ph">💧</div>
+        </div>
+        <div>
+            <span class="card-value" id="phValue">-</span>
+            <span class="card-unit">pH</span>
+        </div>
+        <span class="card-status status-normal" id="phStatus">Normal</span>
+    </div>
+
+    <div class="card">
+        <div class="card-header">
+            <span class="card-title">Suhu Air</span>
+            <div class="card-icon icon-temp">🌡️</div>
+        </div>
+        <div>
+            <span class="card-value" id="tempValue">-</span>
+            <span class="card-unit">°C</span>
+        </div>
+        <span class="card-status status-normal" id="tempStatus">Normal</span>
+    </div>
+
+    <div class="card">
+        <div class="card-header">
+            <span class="card-title">TDS (Kekeruhan)</span>
+            <div class="card-icon icon-tds">⚗️</div>
+        </div>
+        <div>
+            <span class="card-value" id="tdsValue">-</span>
+            <span class="card-unit">ppm</span>
+        </div>
+        <span class="card-status status-normal" id="tdsStatus">Normal</span>
+    </div>
+</div>
+
+<!-- Charts -->
+<div class="chart-container">
+    <div class="chart-header">
+        <h2 class="chart-title">Grafik Real-time (24 Jam Terakhir)</h2>
+    </div>
+    <canvas id="realtimeChart"></canvas>
+</div>
+
+<!-- Alerts -->
+<div class="alerts-container">
+    <h2 class="chart-title" style="margin-bottom: 1rem;">Alert Terbaru</h2>
+    <div id="alertsList">
+        <p style="color: #999; text-align: center;">Tidak ada alert</p>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    const socket = io();
+    
+    const ctx = document.getElementById('realtimeChart').getContext('2d');
+    const chartData = {
+        labels: [],
+        datasets: [
+            {
+                label: 'pH',
+                data: [],
+                borderColor: '#3b82f6',
+                backgroundColor: 'rgba(59, 130, 246, 0.1)',
+                tension: 0.4
+            },
+            {
+                label: 'Suhu (°C)',
+                data: [],
+                borderColor: '#f59e0b',
+                backgroundColor: 'rgba(245, 158, 11, 0.1)',
+                tension: 0.4
+            },
+            {
+                label: 'TDS (ppm/100)',
+                data: [],
+                borderColor: '#8b5cf6',
+                backgroundColor: 'rgba(139, 92, 246, 0.1)',
+                tension: 0.4
+            }
+        ]
+    };
+
+    const chart = new Chart(ctx, {
+        type: 'line',
+        data: chartData,
+        options: {
+            responsive: true,
+            maintainAspectRatio: true,
+            plugins: {
+                legend: {
+                    display: true,
+                    position: 'top'
+                }
+            },
+            scales: {
+                y: {
+                    beginAtZero: true
+                }
+            }
+        }
+    });
+
+    function updateUI(data) {
+        document.getElementById('phValue').textContent = data.ph.toFixed(2);
+        document.getElementById('tempValue').textContent = data.temperature.toFixed(1);
+        document.getElementById('tdsValue').textContent = data.tds.toFixed(0);
+        
+        const time = new Date(data.timestamp).toLocaleTimeString('id-ID');
+        document.getElementById('lastUpdate').textContent = time;
+        
+        updateStatus('phStatus', data.status);
+        updateStatus('tempStatus', data.status);
+        updateStatus('tdsStatus', data.status);
+        
+        document.getElementById('systemStatus').textContent = 
+            data.status === 'normal' ? 'Normal' : 
+            data.status === 'warning' ? 'Peringatan' : 'Bahaya';
+        
+        const timeLabel = new Date(data.timestamp).toLocaleTimeString('id-ID', {
+            hour: '2-digit',
+            minute: '2-digit'
+        });
+        
+        chartData.labels.push(timeLabel);
+        chartData.datasets[0].data.push(data.ph);
+        chartData.datasets[1].data.push(data.temperature);
+        chartData.datasets[2].data.push(data.tds / 100);
+        
+        if (chartData.labels.length > 20) {
+            chartData.labels.shift();
+            chartData.datasets.forEach(dataset => dataset.data.shift());
+        }
+        
+        chart.update('none');
+    }
+
+    function updateStatus(elementId, status) {
+        const element = document.getElementById(elementId);
+        element.className = 'card-status';
+        
+        if (status === 'normal') {
+            element.classList.add('status-normal');
+            element.textContent = 'Normal';
+        } else if (status === 'warning') {
+            element.classList.add('status-warning');
+            element.textContent = 'Peringatan';
+        } else {
+            element.classList.add('status-danger');
+            element.textContent = 'Bahaya';
+        }
+    }
+
+    socket.on('connect', () => {
+        console.log('Connected to server');
+        document.getElementById('connectionStatus').className = 'status-dot status-online';
+        document.getElementById('connectionText').textContent = 'ESP32 Online';
+    });
+
+    socket.on('disconnect', () => {
+        console.log('Disconnected from server');
+        document.getElementById('connectionStatus').className = 'status-dot status-danger';
+        document.getElementById('connectionText').textContent = 'ESP32 Offline';
+    });
+
+    socket.on('sensor_update', (data) => {
+        console.log('Received sensor data:', data);
+        updateUI(data);
+        
+        if (data.alerts && data.alerts.length > 0) {
+            updateAlerts(data.alerts);
+        }
+    });
+
+    function updateAlerts(alerts) {
+        const alertsList = document.getElementById('alertsList');
+        alertsList.innerHTML = '';
+        
+        alerts.forEach(alert => {
+            const alertDiv = document.createElement('div');
+            alertDiv.className = `alert-item alert-${alert.severity}`;
+            alertDiv.innerHTML = `
+                <div class="alert-time">${new Date().toLocaleString('id-ID')}</div>
+                <div class="alert-message">${alert.message}</div>
+            `;
+            alertsList.appendChild(alertDiv);
+        });
+    }
+
+    async function fetchInitialData() {
+        try {
+            const response = await fetch('/api/sensor/current');
+            const data = await response.json();
+            updateUI(data);
+        } catch (error) {
+            console.error('Error fetching initial data:', error);
+        }
+        
+        try {
+            const response = await fetch('/api/sensor/history?limit=20');
+            const history = await response.json();
+            
+            history.reverse().forEach(data => {
+                const timeLabel = new Date(data.timestamp).toLocaleTimeString('id-ID', {
+                    hour: '2-digit',
+                    minute: '2-digit'
+                });
+                
+                chartData.labels.push(timeLabel);
+                chartData.datasets[0].data.push(data.ph);
+                chartData.datasets[1].data.push(data.temperature);
+                chartData.datasets[2].data.push(data.tds / 100);
+            });
+            
+            chart.update();
+        } catch (error) {
+            console.error('Error fetching history:', error);
+        }
+        
+        try {
+            const response = await fetch('/api/alerts?limit=5');
+            const alerts = await response.json();
+            
+            if (alerts.length > 0) {
+                const alertsList = document.getElementById('alertsList');
+                alertsList.innerHTML = '';
+                
+                alerts.forEach(alert => {
+                    const alertDiv = document.createElement('div');
+                    alertDiv.className = `alert-item alert-${alert.severity}`;
+                    alertDiv.innerHTML = `
+                        <div class="alert-time">${new Date(alert.timestamp).toLocaleString('id-ID')}</div>
+                        <div class="alert-message">${alert.message}</div>
+                    `;
+                    alertsList.appendChild(alertDiv);
+                });
+            }
+        } catch (error) {
+            console.error('Error fetching alerts:', error);
+        }
+    }
+
+    fetchInitialData();
+</script>
+{% endblock %}

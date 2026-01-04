@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}IPAL Monitoring{% endblock %} - RS Mata Purwokerto</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+    {% block extra_css %}{% endblock %}
+</head>
+<body>
+    <nav class="navbar">
+        <div class="navbar-brand">
+            <h1>IPAL Monitoring</h1>
+            <p class="navbar-subtitle">RS Khusus Mata Purwokerto</p>
+        </div>
+        <div class="nav-links">
+            <a href="/dashboard" class="{% if request.endpoint == 'dashboard' %}active{% endif %}">Dashboard</a>
+            <a href="/history" class="{% if request.endpoint == 'history' %}active{% endif %}">Riwayat</a>
+            <a href="/reports" class="{% if request.endpoint == 'reports' %}active{% endif %}">Laporan</a>
+            <a href="/settings" class="{% if request.endpoint == 'settings' %}active{% endif %}">Pengaturan</a>
+            <div class="user-menu">
+                <span class="user-name">{{ session.username or 'User' }}</span>
+                <a href="/logout" class="btn-logout">🚪 Logout</a>
+            </div>
+        </div>
+    </nav>
+
+    <main class="main-content">
+        {% block content %}{% endblock %}
+    </main>
+
+    <footer class="footer">
+        <p>&copy; 2024 RS Khusus Mata Purwokerto - IPAL Monitoring System</p>
+        <p style="margin-top: 0.5rem;">Developed by Tim H</p>
+    </footer>
+
+    {% block extra_js %}{% endblock %}
+</body>
+</html>
